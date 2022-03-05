@@ -11,12 +11,12 @@ static VERBOSE: bool = false;
 pub fn cupcake() {
     // reference that can only be accessed in mutual exclusion; by one person
     let cake = Arc::new(Mutex::new(true));
-    let mut finished = Arc::new(AtomicBool::new(false));
-    let curr = Instant::now();
+    let finished = Arc::new(AtomicBool::new(false));
+    
     let mut thread_list = Vec::new();
 
     let cake_ref = Arc::clone(&cake);
-    let mut fin_ref = Arc::clone(&finished);
+    let fin_ref = Arc::clone(&finished);
     // thread that will count guests that went in or out
     let master = std::thread::spawn(move || {
         let mut counter = 1;
@@ -36,7 +36,7 @@ pub fn cupcake() {
         }
         let t = fin_ref;
         println!("All guests have entered the maze");
-        t.store(true, Ordering::Relaxed);
+        t.store(true, Ordering::SeqCst);
     });
 
     // create threads for rest of system
@@ -49,11 +49,11 @@ pub fn cupcake() {
 
             // if it hasn't eaten a cupcake, check if it can take one
             // and update self state
-            while (!visited) {
+            while !visited {
                 //print!("{} = ", num);
                 let mut t = c_ref.lock().unwrap();
                 if *t {
-                    if (VERBOSE) {
+                    if VERBOSE {
                         println!("Changing {}", num);
                     }
                     *t = false;
@@ -66,27 +66,31 @@ pub fn cupcake() {
             // even though we have visited, still pass through room but don't do anything
             // just 'park' tp show thread has finished
 
-            while !pr_finished.load(Ordering::Relaxed) {
+            while !pr_finished.load(Ordering::SeqCst) {
                 thread::park();
             }
         });
         thread_list.push(handle);
     }
-    //thread_list.push(master);
 
+    let curr = Instant::now();
     let mut r = rand::thread_rng();
-    while !finished.load(Ordering::Relaxed) {
+    while !finished.load(Ordering::SeqCst ) {
+        // get random thread to go through maze
         let next = r.gen_range(0..NUM_GUESTS - 1) as usize;
+        // if counter thread, call seperately
         if next == 0 {
             master.thread().unpark();
         } else {
+            // unsleep the thread to 
             let t = thread_list.get(next).expect("getting Thread");
             t.thread().unpark();
         }
     }
 
-    master.join();
-
+    // wait for only the counter thread
+    // after this, finishing main will force-stop the rest of the threads
+    let _ = master.join();
     println!("Exited with {:?}", curr.elapsed());
 }
 
