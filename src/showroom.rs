@@ -74,7 +74,7 @@ pub fn attempt()
     let threadlist: Arc<Mutex<Vec<thread::JoinHandle<()>>>> = Arc::new( Mutex::new(Vec::new()) );
     let queue = Arc::new( Mutex::new(Vec::new() ) );
 
-    // simulate 100 visiits
+    // simulate 100 visitors getting in line
     for i in 0..100
     {
         let mut rng = rand::thread_rng();
@@ -82,11 +82,12 @@ pub fn attempt()
         let n = rng.gen_range(0..N) as usize;
         t.push(n);
     }
-
+    // give the computer time for the array to be populated
     thread::sleep_ms(50);
     // create function for threads to call upon next threads
     for i in 0..N
     {
+        // reference copies
         let tRef = Arc::clone(&threadlist);
         let cRef = Arc::clone(&counter);
         let qRef = Arc::clone(&queue);
@@ -94,21 +95,23 @@ pub fn attempt()
            let num = i;
             while 1 > 0
             {
+                // wait on thread until necessary
                 thread::park();
 
-                println!("Thread {} awakened", num);
+                //println!("Thread {} awakened", num);
                 let mut c = cRef.lock().unwrap();
                 let curr = qRef.lock().unwrap();
                 // counter will be advanced
                 *c = (*c + 1) % 100;
                 let next = curr[*c];
                 //println!("next: ({}, {})", *c, next );
+                // ensure we are dropping memory val
                 drop(c);
                 drop(curr);
 
+                // get next thread to awaken
                 let th = &tRef.lock().unwrap()[next];
                 th.thread().unpark();
-                print!("unparked");
             }
         });
         let a = threadlist.lock().unwrap().push(t);
